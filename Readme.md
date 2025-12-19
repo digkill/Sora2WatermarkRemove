@@ -60,7 +60,7 @@ git clone https://github.com/digkill/Sora2WatermarkRemove.git
 cd Sora2WatermarkRemove
 ```
 
-2. Set up environment variables
+### 2. Set up environment variables
 Copy the example and fill in your values:
 Bashcp .env.example .env
 Required variables in .env:
@@ -80,7 +80,8 @@ LAVA_SECRET_KEY=your_secret_key
 
 # JWT
 JWT_SECRET=strong-random-secret-here
-3. Run PostgreSQL
+
+### 3. Run PostgreSQL
 Using Docker (recommended):
 Bashdocker run -d \
   --name postgres \
@@ -89,17 +90,27 @@ Bashdocker run -d \
   -e POSTGRES_DB=sora_watermark \
   -p 5432:5432 \
   postgres:16
-4. Run migrations
+
+### 4. Run migrations
 Bashcargo install sqlx-cli --no-default-features --features rustls,postgres
 sqlx migrate run
-5. Start the server
+
+### 5. Start the server
 Bashcargo run
 Server will be available at http://localhost:8065
 API Endpoints
 
- 
 
-MethodEndpointDescriptionAuthPOST/registerRegister new userNoPOST/loginLogin & get JWTNoPOST/api/uploadUpload video (uses credit/quota)YesGET/api/my-videosList user's videosYesGET/api/productsList available packs/subscriptionsYesPOST/api/create-paymentCreate payment link (Lava.top)YesGET/api/subscriptionsList active subscriptionsYesPOST/api/subscriptions/cancelCancel subscriptionYesPOST/webhook/lavaLava payment webhook (public)NoPOST/api/watermark-callbackKie.ai processing result webhookNo
+MethodEndpointDescriptionAuth
+POST /auth/registerRegister new userNo
+POST /auth/loginLogin & get JWTNo
+POST /api/uploadUpload video (uses credit/quota)Yes
+GET /api/productsList available packs/subscriptionsYes
+POST /api/create-paymentCreate payment link (Lava.top)Yes
+GET /api/subscriptionsList user's subscriptionsYes
+POST /api/subscriptions/cancelCancel subscriptionYes
+POST /webhook/lavaLava payment webhook (public)No
+POST /api/watermark-callbackKie.ai processing result webhookNo
 Security Notes
 
 Never commit .env to version control
@@ -110,10 +121,6 @@ S3 bucket should allow public reads for cleaned videos (or use signed URLs)
 Contributing
 Contributions are welcome! Feel free to open issues or PRs.
 
-Fork the repo
-Create a feature branch
-Commit changes
-Open a Pull Request
 
 License
 MIT License

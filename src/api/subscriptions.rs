@@ -1,19 +1,41 @@
-// /api/subscriptions
-pub async fn list_subscriptions(user: web::ReqData<i32>, state: web::Data<AppState>) -> impl Responder {
-    let subs = sqlx::query!("SELECT * FROM subscriptions WHERE user_id = $1", *user)
-        .fetch_all(&state.pool)
-        .await
-        .unwrap();
+// src/api/subscriptions.rs
 
-    HttpResponse::Ok().json(subs)
+use actix_web::{get, post, web, HttpResponse, Responder};
+use serde::Deserialize;
+
+use crate::{db, AppState};
+
+#[get("/subscriptions")]
+pub async fn list_subscriptions(state: web::Data<AppState>, user_id: web::ReqData<i32>) -> impl Responder {
+    let user_id = *user_id;
+
+    match db::list_user_subscriptions(&state.pool, user_id).await {
+        Ok(subs) => HttpResponse::Ok().json(subs),
+        Err(e) => {
+            eprintln!("list_subscriptions db error: {e}");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }
 
-// /api/subscriptions/cancel
-pub async fn cancel_subscription(/* subscription_id */, state: web::Data<AppState>) -> impl Responder {
-    // Можно просто пометить как canceled
-    sqlx::query!("UPDATE subscriptions SET status = 'canceled', canceled_at = NOW() WHERE id = $1 AND user_id = $2", id, user_id)
-        .execute(&state.pool)
-        .await?;
+#[derive(Debug, Deserialize)]
+pub struct CancelSubscriptionRequest {
+    pub subscription_id: i32,
+}
 
-    HttpResponse::Ok().body("Subscription canceled")
+#[post("/subscriptions/cancel")]
+pub async fn cancel_subscription(
+    state: web::Data<AppState>,
+    user_id: web::ReqData<i32>,
+    payload: web::Json<CancelSubscriptionRequest>,
+) -> impl Responder {
+    let user_id = *user_id;
+
+    match db::cancel_user_subscription(&state.pool, user_id, payload.subscription_id).await {
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({"status": "canceled"})),
+        Err(e) => {
+            eprintln!("cancel_subscription db error: {e}");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
 }

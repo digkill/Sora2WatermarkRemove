@@ -1,49 +1,44 @@
 // src/billing.rs
 
-use chrono::{Utc, Duration};
-use sqlx::{PgPool, FromRow};
-use crate::db::User;
+use chrono::{DateTime, Duration, Utc};
+use sqlx::{PgPool, Row};
 
-/// Обновляет месячную квоту пользователя на основе активной подписки
+use crate::db;
+
+/// Обновляет месячную квоту пользователю при наличии активной подписки.
+/// Логика:
+/// - если есть эффективная подписка (active/canceled, но период не закончился)
+/// - и quota_reset_at NULL или <= now
+/// тогда ставим monthly_quota = monthly_credits и quota_reset_at = now + 30 дней.
+///
+/// Примечание: мы используем фиксированные 30 дней (без привязки к календарным месяцам),
+/// т.к. в таблице subscriptions хранится период, а провайдер может присылать точные даты.
 pub async fn refresh_monthly_quota(pool: &PgPool, user_id: i32) -> Result<(), sqlx::Error> {
-    let now = Utc::now();
+    let (sub_opt, monthly_credits) = match db::get_effective_subscription(pool, user_id).await? {
+        Some((sub, credits)) => (Some(sub), credits),
+        None => (None, 0),
+    };
 
-    // Получаем пользователя и его активную подписку
-    let record = sqlx::query!(
-        r#"
-        SELECT
-            u.credits, u.monthly_quota, u.quota_reset_at,
-            p.monthly_credits
-        FROM users u
-        LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
-        LEFT JOIN products p ON p.id = s.product_id AND p.product_type = 'subscription'
-        WHERE u.id = $1
-        "#,
-        user_id
-    )
-        .fetch_optional(pool)
+    if sub_opt.is_none() {
+        return Ok(());
+    }
+
+    let row = sqlx::query("SELECT quota_reset_at FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
         .await?;
 
-    let (mut current_quota, reset_at, monthly_credits) = match record {
-        Some(r) => (r.monthly_quota.unwrap_or(0), r.quota_reset_at, r.monthly_credits),
-        None => return Ok(()),
-    };
+    let quota_reset_at: Option<DateTime<Utc>> = row.get("quota_reset_at");
 
-    let should_reset = match reset_at {
-        Some(reset) => now >= reset,
-        None => true, // если никогда не сбрасывали — сбросим сейчас
-    };
+    let now = Utc::now();
+    let need_reset = quota_reset_at.map(|t| t <= now).unwrap_or(true);
 
-    if should_reset {
-        current_quota = monthly_credits.unwrap_or(0);
-        let next_reset = (now + Duration::days(30)).date_naive().and_hms_opt(0, 0, 0); // приблизительно месяц
-
-        sqlx::query!(
-            "UPDATE users SET monthly_quota = $1, quota_reset_at = $2 WHERE id = $3",
-            current_quota,
-            next_reset.map(|d| d.and_utc()),
-            user_id
-        )
+    if need_reset {
+        let next = now + Duration::days(30);
+        sqlx::query("UPDATE users SET monthly_quota = $1, quota_reset_at = $2 WHERE id = $3")
+            .bind(monthly_credits)
+            .bind(next)
+            .bind(user_id)
             .execute(pool)
             .await?;
     }
@@ -51,40 +46,68 @@ pub async fn refresh_monthly_quota(pool: &PgPool, user_id: i32) -> Result<(), sq
     Ok(())
 }
 
-/// Проверяет, может ли пользователь выполнить удаление водяного знака
-/// Возвращает тип использованного кредита: 'one_time' или 'subscription'
+/// Возвращает тип кредита, который можно списать сейчас:
+/// - "monthly" если есть месячная квота (>0)
+/// - иначе "one_time" если есть разовые кредиты (>0)
+/// - иначе None
 pub async fn can_remove_watermark(pool: &PgPool, user_id: i32) -> Result<Option<String>, sqlx::Error> {
-    refresh_monthly_quota(pool, user_id).await?;
+    // На всякий случай обновим квоту перед проверкой
+    let _ = refresh_monthly_quota(pool, user_id).await;
 
-    let user = sqlx::query_as::<_, User>("SELECT credits, monthly_quota FROM users WHERE id = $1")
+    let row = sqlx::query("SELECT credits, monthly_quota FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_one(pool)
         .await?;
 
-    if user.monthly_quota > 0 {
-        return Ok(Some("subscription".to_string()));
-    }
-    if user.credits > 0 {
-        return Ok(Some("one_time".to_string()));
-    }
+    let credits: i32 = row.get("credits");
+    let monthly_quota: i32 = row.get("monthly_quota");
 
-    Ok(None)
+    if monthly_quota > 0 {
+        Ok(Some("monthly".to_string()))
+    } else if credits > 0 {
+        Ok(Some("one_time".to_string()))
+    } else {
+        Ok(None)
+    }
 }
 
-/// Списывает один кредит/квоту после успешной загрузки
 pub async fn consume_credit(pool: &PgPool, user_id: i32, credit_type: &str) -> Result<(), sqlx::Error> {
     match credit_type {
-        "subscription" => {
-            sqlx::query!("UPDATE users SET monthly_quota = monthly_quota - 1 WHERE id = $1", user_id)
+        "monthly" => {
+            sqlx::query("UPDATE users SET monthly_quota = GREATEST(monthly_quota - 1, 0) WHERE id = $1")
+                .bind(user_id)
                 .execute(pool)
                 .await?;
         }
-        "one_time" => {
-            sqlx::query!("UPDATE users SET credits = credits - 1 WHERE id = $1", user_id)
+        _ => {
+            sqlx::query("UPDATE users SET credits = GREATEST(credits - 1, 0) WHERE id = $1")
+                .bind(user_id)
                 .execute(pool)
                 .await?;
         }
-        _ => {}
     }
+
+    Ok(())
+}
+
+pub async fn grant_one_time_credits(pool: &PgPool, user_id: i32, credits: i32) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE users SET credits = credits + $1 WHERE id = $2")
+        .bind(credits)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn set_subscription_monthly_quota(pool: &PgPool, user_id: i32, monthly_credits: i32) -> Result<(), sqlx::Error> {
+    let next = Utc::now() + Duration::days(30);
+    sqlx::query("UPDATE users SET monthly_quota = $1, quota_reset_at = $2 WHERE id = $3")
+        .bind(monthly_credits)
+        .bind(next)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
     Ok(())
 }

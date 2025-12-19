@@ -1,4 +1,4 @@
--- Загрузки и обработки видео
+-- Video uploads and processing
 CREATE TABLE uploads (
                          id SERIAL PRIMARY KEY,
                          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -10,10 +10,10 @@ CREATE TABLE uploads (
                          cleaned_s3_key VARCHAR(512),
                          cleaned_url TEXT,
 
-                         status VARCHAR(50) NOT NULL DEFAULT 'uploaded',   -- uploaded, processing, ready, failed, paid_pending
-                         used_credit_type VARCHAR(20) DEFAULT 'one_time',  -- one_time или subscription
+                         status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
+                         used_credit_type VARCHAR(20) DEFAULT 'one_time',
 
-                         lava_order_id VARCHAR(255),                      -- если была разовая оплата через Lava
+                         lava_order_id VARCHAR(255),
 
                          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
