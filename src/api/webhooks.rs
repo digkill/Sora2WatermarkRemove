@@ -1,20 +1,22 @@
 // src/api/webhooks.rs
 
-use actix_web::{post, web, HttpResponse};
+use crate::{AppState, s3_utils::build_public_url};
+use actix_web::{HttpResponse, post, web};
 use aws_sdk_s3::primitives::ByteStream;
 use reqwest::Client as HttpClient;
 use serde::Deserialize;
-use crate::AppState;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug)]  // Добавили Debug
-struct CallbackPayload {
+#[derive(Deserialize, Debug, ToSchema)] // Добавили Debug
+pub struct CallbackPayload {
     code: i32,
+    #[allow(dead_code)]
     msg: Option<String>,
     data: CallbackData,
 }
 
-#[derive(Deserialize, Debug)]
-struct CallbackData {
+#[derive(Deserialize, Debug, ToSchema)]
+pub struct CallbackData {
     #[serde(rename = "taskId")]
     task_id: String,
     status: String,
@@ -22,6 +24,17 @@ struct CallbackData {
     output_url: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/watermark-callback",
+    tag = "webhooks",
+    request_body = CallbackPayload,
+    responses(
+        (status = 200, description = "Callback processed"),
+        (status = 400, description = "Task failed or invalid payload"),
+        (status = 500, description = "Server error")
+    )
+)]
 #[post("/api/watermark-callback")]
 pub async fn watermark_callback(
     payload: web::Json<CallbackPayload>,
@@ -64,7 +77,8 @@ pub async fn watermark_callback(
 
     let stream = ByteStream::from(bytes);
 
-    if let Err(e) = state.s3_client
+    if let Err(e) = state
+        .s3_client
         .put_object()
         .bucket(&state.s3_bucket)
         .key(&s3_key)
@@ -82,7 +96,7 @@ pub async fn watermark_callback(
         "UPDATE uploads SET cleaned_s3_key = $1, cleaned_url = $2, status = 'ready' WHERE task_id = $3",
     )
     .bind(&s3_key)
-    .bind(format!("https://{}.s3.amazonaws.com/{}", state.s3_bucket, s3_key))
+    .bind(build_public_url(&state.s3_public_base_url, &state.s3_bucket, &s3_key))
     .bind(&task_id)
     .execute(&state.pool)
     .await;

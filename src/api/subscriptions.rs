@@ -1,12 +1,15 @@
 // src/api/subscriptions.rs
 
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use serde::Deserialize;
 
-use crate::{db, AppState};
+use crate::{AppState, db};
 
 #[get("/subscriptions")]
-pub async fn list_subscriptions(state: web::Data<AppState>, user_id: web::ReqData<i32>) -> impl Responder {
+pub async fn list_subscriptions(
+    state: web::Data<AppState>,
+    user_id: web::ReqData<i32>,
+) -> impl Responder {
     let user_id = *user_id;
 
     match db::list_user_subscriptions(&state.pool, user_id).await {

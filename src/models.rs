@@ -43,7 +43,7 @@ pub struct Transaction {
     pub provider_order_id: String,
     pub amount: String,
     pub currency: String,
-    pub status: String, // pending | succeeded | failed | refunded
+    pub status: String,  // pending | succeeded | failed | refunded
     pub tx_type: String, // payment | refund
     pub payload: Option<serde_json::Value>,
     pub paid_at: Option<DateTime<Utc>>,

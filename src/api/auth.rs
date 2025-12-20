@@ -1,16 +1,17 @@
 // src/api/auth.rs
 
-use actix_web::{post, web, HttpResponse, Responder, HttpMessage};
+use actix_web::Error;
 use actix_web::body::MessageBody;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::Error;
-use bcrypt::{hash, verify, DEFAULT_COST};
+use actix_web::{HttpMessage, HttpResponse, Responder, post, web};
+use bcrypt::{DEFAULT_COST, hash, verify};
 use chrono::{Duration, Utc};
-use futures_util::future::{ready, LocalBoxFuture, Ready};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use futures_util::future::{LocalBoxFuture, Ready, ready};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::task::{Context, Poll};
+use utoipa::ToSchema;
 
 use crate::AppState;
 
@@ -20,25 +21,36 @@ struct Claims {
     exp: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
     pub username: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuthResponse {
     pub token: String,
     pub user_id: i32,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    tag = "auth",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "User registered", body = AuthResponse),
+        (status = 400, description = "User already exists or invalid data"),
+        (status = 500, description = "Server error")
+    )
+)]
 #[post("/auth/register")]
 pub async fn register(
     state: web::Data<AppState>,
@@ -85,6 +97,17 @@ pub async fn register(
     HttpResponse::Ok().json(AuthResponse { token, user_id })
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Authenticated", body = AuthResponse),
+        (status = 401, description = "Invalid credentials"),
+        (status = 500, description = "Server error")
+    )
+)]
 #[post("/auth/login")]
 pub async fn login(state: web::Data<AppState>, payload: web::Json<LoginRequest>) -> impl Responder {
     let row = match sqlx::query(r#"SELECT id, password_hash FROM users WHERE email = $1"#)
@@ -191,7 +214,7 @@ where
         self.service.poll_ready(cx)
     }
 
-    fn call(&self, mut req: ServiceRequest) -> Self::Future {
+    fn call(&self, req: ServiceRequest) -> Self::Future {
         let secret = match std::env::var("JWT_SECRET") {
             Ok(s) => s,
             Err(_) => {
@@ -199,7 +222,7 @@ where
                     Err(actix_web::error::ErrorInternalServerError(
                         "JWT secret not set",
                     ))
-                })
+                });
             }
         };
 
@@ -223,7 +246,7 @@ where
                 Err(_) => {
                     return Box::pin(async move {
                         Err(actix_web::error::ErrorUnauthorized("Invalid token"))
-                    })
+                    });
                 }
             }
         }

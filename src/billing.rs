@@ -50,7 +50,10 @@ pub async fn refresh_monthly_quota(pool: &PgPool, user_id: i32) -> Result<(), sq
 /// - "monthly" если есть месячная квота (>0)
 /// - иначе "one_time" если есть разовые кредиты (>0)
 /// - иначе None
-pub async fn can_remove_watermark(pool: &PgPool, user_id: i32) -> Result<Option<String>, sqlx::Error> {
+pub async fn can_remove_watermark(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<Option<String>, sqlx::Error> {
     // На всякий случай обновим квоту перед проверкой
     let _ = refresh_monthly_quota(pool, user_id).await;
 
@@ -71,13 +74,19 @@ pub async fn can_remove_watermark(pool: &PgPool, user_id: i32) -> Result<Option<
     }
 }
 
-pub async fn consume_credit(pool: &PgPool, user_id: i32, credit_type: &str) -> Result<(), sqlx::Error> {
+pub async fn consume_credit(
+    pool: &PgPool,
+    user_id: i32,
+    credit_type: &str,
+) -> Result<(), sqlx::Error> {
     match credit_type {
         "monthly" => {
-            sqlx::query("UPDATE users SET monthly_quota = GREATEST(monthly_quota - 1, 0) WHERE id = $1")
-                .bind(user_id)
-                .execute(pool)
-                .await?;
+            sqlx::query(
+                "UPDATE users SET monthly_quota = GREATEST(monthly_quota - 1, 0) WHERE id = $1",
+            )
+            .bind(user_id)
+            .execute(pool)
+            .await?;
         }
         _ => {
             sqlx::query("UPDATE users SET credits = GREATEST(credits - 1, 0) WHERE id = $1")
@@ -90,7 +99,11 @@ pub async fn consume_credit(pool: &PgPool, user_id: i32, credit_type: &str) -> R
     Ok(())
 }
 
-pub async fn grant_one_time_credits(pool: &PgPool, user_id: i32, credits: i32) -> Result<(), sqlx::Error> {
+pub async fn grant_one_time_credits(
+    pool: &PgPool,
+    user_id: i32,
+    credits: i32,
+) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE users SET credits = credits + $1 WHERE id = $2")
         .bind(credits)
         .bind(user_id)
@@ -100,7 +113,11 @@ pub async fn grant_one_time_credits(pool: &PgPool, user_id: i32, credits: i32) -
     Ok(())
 }
 
-pub async fn set_subscription_monthly_quota(pool: &PgPool, user_id: i32, monthly_credits: i32) -> Result<(), sqlx::Error> {
+pub async fn set_subscription_monthly_quota(
+    pool: &PgPool,
+    user_id: i32,
+    monthly_credits: i32,
+) -> Result<(), sqlx::Error> {
     let next = Utc::now() + Duration::days(30);
     sqlx::query("UPDATE users SET monthly_quota = $1, quota_reset_at = $2 WHERE id = $3")
         .bind(monthly_credits)

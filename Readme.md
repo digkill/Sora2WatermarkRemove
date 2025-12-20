@@ -67,12 +67,19 @@ Required variables in .env:
 envDATABASE_URL=postgres://user:password@localhost:5432/sora_watermark
 KIE_API_KEY=your_kie_ai_api_key
 S3_BUCKET=your-s3-bucket-name
+S3_ENDPOINT=https://your-s3-endpoint            # optional, for S3-compatible storage (e.g., Beget)
+S3_PUBLIC_BASE_URL=https://bucket.s3.amazonaws.com  # public base for file links; can be the endpoint
 CALLBACK_BASE_URL=https://your-domain.com
 
-# AWS (can use IAM role on EC2)
+# AWS or S3-compatible credentials
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
+
+Example for Beget object storage:
+envS3_BUCKET=9fe901b70b98-mainstoragepublic
+S3_ENDPOINT=https://s3.ru1.storage.beget.cloud
+S3_PUBLIC_BASE_URL=https://s3.ru1.storage.beget.cloud
 
 # Lava.top
 LAVA_PROJECT_ID=your_project_id

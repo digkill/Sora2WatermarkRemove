@@ -1,8 +1,8 @@
 // src/api/products.rs
 
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 
-use crate::{db, AppState};
+use crate::{AppState, db};
 
 #[get("/products")]
 pub async fn list_products(state: web::Data<AppState>) -> impl Responder {

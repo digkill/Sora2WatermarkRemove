@@ -34,7 +34,10 @@ pub async fn list_active_products(pool: &PgPool) -> Result<Vec<Product>, sqlx::E
         .collect())
 }
 
-pub async fn get_product_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Product>, sqlx::Error> {
+pub async fn get_product_by_slug(
+    pool: &PgPool,
+    slug: &str,
+) -> Result<Option<Product>, sqlx::Error> {
     let row = sqlx::query(
         r#"SELECT id, slug, name, description, price::text as price, currency, product_type,
                   credits_granted, monthly_credits, is_active, created_at
@@ -65,7 +68,7 @@ pub async fn get_product_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Pro
 pub async fn get_effective_subscription(
     pool: &PgPool,
     user_id: i32,
-) -> Result<Option<(Subscription, i32 /*monthly_credits*/ )>, sqlx::Error> {
+) -> Result<Option<(Subscription, i32 /*monthly_credits*/)>, sqlx::Error> {
     let row = sqlx::query(
         r#"SELECT s.id, s.user_id, s.product_id, s.provider, s.provider_subscription_id,
                   s.status, s.current_period_start, s.current_period_end,
@@ -104,7 +107,10 @@ pub async fn get_effective_subscription(
     }))
 }
 
-pub async fn list_user_subscriptions(pool: &PgPool, user_id: i32) -> Result<Vec<Subscription>, sqlx::Error> {
+pub async fn list_user_subscriptions(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<Vec<Subscription>, sqlx::Error> {
     let rows = sqlx::query(
         r#"SELECT id, user_id, product_id, provider, provider_subscription_id,
                   status, current_period_start, current_period_end,
@@ -135,7 +141,11 @@ pub async fn list_user_subscriptions(pool: &PgPool, user_id: i32) -> Result<Vec<
         .collect())
 }
 
-pub async fn cancel_user_subscription(pool: &PgPool, user_id: i32, subscription_id: i32) -> Result<(), sqlx::Error> {
+pub async fn cancel_user_subscription(
+    pool: &PgPool,
+    user_id: i32,
+    subscription_id: i32,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"UPDATE subscriptions
            SET status = 'canceled', canceled_at = NOW()
@@ -162,7 +172,7 @@ pub async fn upsert_subscription_active(
         r#"INSERT INTO subscriptions
                 (user_id, product_id, provider, provider_subscription_id, status, current_period_start, current_period_end)
            VALUES ($1, $2, $3, $4, 'active', $5, $6)
-           ON CONFLICT (provider, provider_subscription_id)
+           ON CONFLICT (provider, provider_subscription_id) WHERE provider_subscription_id IS NOT NULL
            DO UPDATE SET
                product_id = EXCLUDED.product_id,
                status = 'active',

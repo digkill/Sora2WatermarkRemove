@@ -1,9 +1,10 @@
-pub mod handlers;
-pub mod config;
-pub mod webhooks;
 pub mod auth;
-pub mod payments;
-pub mod subscriptions;
-pub mod products;
+pub mod config;
+pub mod handlers;
 pub mod lava;
+pub mod lava_client;
+pub mod payments;
+pub mod products;
+pub mod subscriptions;
+pub mod webhooks;
 pub mod webhooks_lava;

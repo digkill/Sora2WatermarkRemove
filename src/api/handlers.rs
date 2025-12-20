@@ -1,18 +1,50 @@
 // src/api/handlers.rs
 
 use actix_multipart::Multipart;
-use actix_web::{post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, post, web};
 use aws_sdk_s3::primitives::ByteStream;
 use futures_util::StreamExt;
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde::Serialize;
+use serde_json::{Value, json};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::billing::{can_remove_watermark, consume_credit};
 use crate::AppState; // AppState в main.rs
+use crate::billing::{can_remove_watermark, consume_credit};
+use crate::s3_utils::build_public_url;
 use actix_web::web::ReqData;
 use sqlx::Row;
 
+#[derive(ToSchema)]
+pub struct FileUploadBody {
+    /// MP4 video file
+    #[schema(value_type = String, format = Binary)]
+    pub file: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct UploadResponse {
+    pub message: String,
+    pub upload_id: i32,
+    pub task_id: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/upload",
+    tag = "uploads",
+    request_body(
+        content = FileUploadBody,
+        content_type = "multipart/form-data"
+    ),
+    responses(
+        (status = 200, description = "Upload accepted", body = UploadResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 402, description = "Insufficient credits"),
+        (status = 500, description = "Server error")
+    )
+)]
 #[post("/upload")]
 pub async fn upload(
     mut payload: Multipart,
@@ -24,9 +56,11 @@ pub async fn upload(
     // Проверка кредитов
     let credit_type = match can_remove_watermark(&state.pool, user_id).await {
         Ok(Some(t)) => t,
-        Ok(None) => return HttpResponse::PaymentRequired().json(json!({
-            "error": "Insufficient credits"
-        })),
+        Ok(None) => {
+            return HttpResponse::PaymentRequired().json(json!({
+                "error": "Insufficient credits"
+            }));
+        }
         Err(e) => {
             eprintln!("Billing error: {}", e);
             return HttpResponse::InternalServerError().body("Billing error");
@@ -65,7 +99,8 @@ pub async fn upload(
     let original_key = format!("original/{}/{}.mp4", user_id, Uuid::new_v4());
     let stream = ByteStream::from(file_bytes);
 
-    if let Err(e) = state.s3_client
+    if let Err(e) = state
+        .s3_client
         .put_object()
         .bucket(&state.s3_bucket)
         .key(&original_key)
@@ -100,7 +135,7 @@ pub async fn upload(
     let _ = consume_credit(&state.pool, user_id, &credit_type).await;
 
     // Запуск Kie.ai
-    let public_url = format!("https://{}.s3.amazonaws.com/{}", state.s3_bucket, original_key);
+    let public_url = build_public_url(&state.s3_public_base_url, &state.s3_bucket, &original_key);
     let callback_url = format!("{}/api/watermark-callback", state.callback_base_url);
 
     match start_remove_watermark(&state.kie_api_key, &public_url, &callback_url).await {
@@ -111,11 +146,13 @@ pub async fn upload(
                 .execute(&state.pool)
                 .await;
 
-            HttpResponse::Ok().json(json!({
-                "message": "Processing started",
-                "upload_id": upload_id,
-                "task_id": task_id
-            }))
+            let response = UploadResponse {
+                message: "Processing started".to_string(),
+                upload_id,
+                task_id,
+            };
+
+            HttpResponse::Ok().json(response)
         }
         Err(e) => HttpResponse::InternalServerError().json(json!({ "error": e })),
     }
