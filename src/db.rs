@@ -8,7 +8,8 @@ use crate::models::{Product, Subscription};
 pub async fn list_active_products(pool: &PgPool) -> Result<Vec<Product>, sqlx::Error> {
     let rows = sqlx::query(
         r#"SELECT id, slug, name, description, price::text as price, currency, product_type,
-                  credits_granted, monthly_credits, is_active, created_at
+                  credits_granted, monthly_credits, lava_offer_id::text as lava_offer_id,
+                  is_active, created_at
            FROM products
            WHERE is_active = true
            ORDER BY price ASC"#,
@@ -28,6 +29,7 @@ pub async fn list_active_products(pool: &PgPool) -> Result<Vec<Product>, sqlx::E
             product_type: r.get("product_type"),
             credits_granted: r.get("credits_granted"),
             monthly_credits: r.get("monthly_credits"),
+            lava_offer_id: r.get("lava_offer_id"),
             is_active: r.get("is_active"),
             created_at: r.get("created_at"),
         })
@@ -40,7 +42,8 @@ pub async fn get_product_by_slug(
 ) -> Result<Option<Product>, sqlx::Error> {
     let row = sqlx::query(
         r#"SELECT id, slug, name, description, price::text as price, currency, product_type,
-                  credits_granted, monthly_credits, is_active, created_at
+                  credits_granted, monthly_credits, lava_offer_id::text as lava_offer_id,
+                  is_active, created_at
            FROM products
            WHERE slug = $1 AND is_active = true"#,
     )
@@ -58,6 +61,7 @@ pub async fn get_product_by_slug(
         product_type: r.get("product_type"),
         credits_granted: r.get("credits_granted"),
         monthly_credits: r.get("monthly_credits"),
+        lava_offer_id: r.get("lava_offer_id"),
         is_active: r.get("is_active"),
         created_at: r.get("created_at"),
     }))

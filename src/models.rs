@@ -14,6 +14,7 @@ pub struct Product {
     pub product_type: String, // one_time | subscription
     pub credits_granted: Option<i32>,
     pub monthly_credits: Option<i32>,
+    pub lava_offer_id: Option<String>,
     pub is_active: bool,
     pub created_at: Option<DateTime<Utc>>,
 }

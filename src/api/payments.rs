@@ -48,6 +48,14 @@ pub async fn create_payment(
         }
     };
 
+    if product.product_type == "subscription"
+        && std::env::var("DISABLE_SUBSCRIPTIONS").unwrap_or_default() == "true"
+    {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "subscriptions are temporarily disabled"
+        }));
+    }
+
     // 2) buyer_email: либо из запроса, либо из users
     let buyer_email = match payload.buyer_email.clone() {
         Some(e) => e,
@@ -65,8 +73,8 @@ pub async fn create_payment(
         },
     };
 
-    // 3) map internal product_slug -> lava offerId
-    let offer_id = match lava_client::offer_id_for_product_slug(&payload.product_slug) {
+    // 3) map internal product_slug -> lava offerId (from DB)
+    let offer_id = match product.lava_offer_id.as_deref() {
         Some(id) => id,
         None => {
             return HttpResponse::BadRequest().json(json!({

@@ -3,6 +3,7 @@ pub mod billing;
 pub mod db;
 pub mod docs;
 pub mod models;
+pub mod queue;
 pub mod s3_utils;
 
 use aws_sdk_s3::Client as S3Client;

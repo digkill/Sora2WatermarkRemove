@@ -1,5 +1,7 @@
 // src/main.rs
+use actix_cors::Cors;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use actix_web::middleware::Logger;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client as S3Client;
 use dotenvy::dotenv;
@@ -17,6 +19,7 @@ async fn index() -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url)
@@ -33,8 +36,7 @@ async fn main() -> std::io::Result<()> {
     let s3_endpoint = env::var("S3_ENDPOINT").ok();
     let s3_public_base_url = env::var("S3_PUBLIC_BASE_URL")
         .unwrap_or_else(|_| format!("https://{}.s3.amazonaws.com", s3_bucket));
-    let callback_base_url =
-        env::var("CALLBACK_BASE_URL").unwrap_or_else(|_| "https://your-domain.com".to_string());
+    let callback_base_url = env::var("CALLBACK_BASE_URL").expect("CALLBACK_BASE_URL required");
 
     let lava_api_key = env::var("LAVA_API_KEY").expect("LAVA_API_KEY required");
     let lava_webhook_key = env::var("LAVA_WEBHOOK_KEY").expect("LAVA_WEBHOOK_KEY required");
@@ -66,9 +68,27 @@ async fn main() -> std::io::Result<()> {
         lava_webhook_key,
     });
 
+    // RabbitMQ status checker for KIE tasks
+    sora_watermark_remov::queue::start_kie_status_queue(state.pool.clone(), state.kie_api_key.clone()).await;
+
     HttpServer::new(move || {
+        let cors = {
+            let mut cors = Cors::default()
+                .allow_any_method()
+                .allow_any_header()
+                .supports_credentials();
+            let origins = env::var("CORS_ALLOWED_ORIGINS")
+                .expect("CORS_ALLOWED_ORIGINS must be set (comma-separated list)");
+            for origin in origins.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                cors = cors.allowed_origin(origin);
+            }
+            cors
+        };
+
         App::new()
             .app_data(state.clone())
+            .wrap(cors)
+            .wrap(Logger::default())
             .route("/", web::get().to(index))
             .service(
                 SwaggerUi::new("/docs/{_:.*}")
@@ -77,18 +97,23 @@ async fn main() -> std::io::Result<()> {
             // Публичные роуты авторизации
             .service(api::auth::register)
             .service(api::auth::login)
+            .service(api::auth::verify_email)
+            .service(api::auth::resend_verification)
+            // Вебхуки (публичные)
+            .service(api::webhooks::watermark_callback)
+            .service(api::webhooks::watermark_callback_alias)
             // Защищённые роуты
             .service(
                 web::scope("/api")
                     .wrap(api::auth::JwtMiddleware)
                     .service(api::handlers::upload)
+                    .service(api::handlers::credits_status)
+                    .service(api::handlers::list_uploads)
                     .service(api::products::list_products)
                     .service(api::payments::create_payment)
                     .service(api::subscriptions::list_subscriptions)
                     .service(api::subscriptions::cancel_subscription),
             )
-            // Вебхуки (публичные)
-            .service(api::webhooks::watermark_callback)
             .service(api::webhooks_lava::lava_webhook)
     })
     .bind(("0.0.0.0", 8065))?

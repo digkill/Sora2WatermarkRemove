@@ -3,7 +3,7 @@
 use actix_web::{HttpResponse, Responder, get, post, web};
 use serde::Deserialize;
 
-use crate::{AppState, db};
+use crate::{AppState, db, models::Subscription};
 
 #[get("/subscriptions")]
 pub async fn list_subscriptions(
@@ -11,6 +11,10 @@ pub async fn list_subscriptions(
     user_id: web::ReqData<i32>,
 ) -> impl Responder {
     let user_id = *user_id;
+
+    if std::env::var("DISABLE_SUBSCRIPTIONS").unwrap_or_default() == "true" {
+        return HttpResponse::Ok().json(Vec::<Subscription>::new());
+    }
 
     match db::list_user_subscriptions(&state.pool, user_id).await {
         Ok(subs) => HttpResponse::Ok().json(subs),
@@ -33,6 +37,12 @@ pub async fn cancel_subscription(
     payload: web::Json<CancelSubscriptionRequest>,
 ) -> impl Responder {
     let user_id = *user_id;
+
+    if std::env::var("DISABLE_SUBSCRIPTIONS").unwrap_or_default() == "true" {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "subscriptions are temporarily disabled"
+        }));
+    }
 
     match db::cancel_user_subscription(&state.pool, user_id, payload.subscription_id).await {
         Ok(()) => HttpResponse::Ok().json(serde_json::json!({"status": "canceled"})),

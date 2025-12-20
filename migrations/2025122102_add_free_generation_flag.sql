@@ -1,0 +1,2 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS free_generation_used BOOLEAN NOT NULL DEFAULT false;

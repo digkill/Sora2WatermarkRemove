@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 actix-web = "4"
+actix-cors = "0.7"
+env_logger = "0.11"
+log = "0.4"
 actix-multipart = "0.6"
 dotenvy = "0.15"
 sqlx = { version = "0.7", features = [
@@ -35,6 +38,9 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 urlencoding = "2"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "ring", "rustls-native-certs"] }
+lapin = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+httpmock = "0.7"

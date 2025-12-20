@@ -57,18 +57,21 @@ pub async fn can_remove_watermark(
     // На всякий случай обновим квоту перед проверкой
     let _ = refresh_monthly_quota(pool, user_id).await;
 
-    let row = sqlx::query("SELECT credits, monthly_quota FROM users WHERE id = $1")
+    let row = sqlx::query("SELECT credits, monthly_quota, free_generation_used FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_one(pool)
         .await?;
 
     let credits: i32 = row.get("credits");
     let monthly_quota: i32 = row.get("monthly_quota");
+    let free_generation_used: bool = row.get("free_generation_used");
 
     if monthly_quota > 0 {
         Ok(Some("monthly".to_string()))
     } else if credits > 0 {
         Ok(Some("one_time".to_string()))
+    } else if !free_generation_used {
+        Ok(Some("free".to_string()))
     } else {
         Ok(None)
     }
@@ -87,6 +90,12 @@ pub async fn consume_credit(
             .bind(user_id)
             .execute(pool)
             .await?;
+        }
+        "free" => {
+            sqlx::query("UPDATE users SET free_generation_used = true WHERE id = $1")
+                .bind(user_id)
+                .execute(pool)
+                .await?;
         }
         _ => {
             sqlx::query("UPDATE users SET credits = GREATEST(credits - 1, 0) WHERE id = $1")
