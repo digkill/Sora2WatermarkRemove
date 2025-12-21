@@ -9,6 +9,7 @@ use sqlx::{PgPool, Row};
 use std::time::Duration;
 use actix_web::rt;
 use dotenvy;
+use crate::ws::{notify_upload_by_task, WsHub};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TaskMessage {
@@ -32,7 +33,11 @@ struct KieRecordData {
 
 const QUEUE_NAME: &str = "kie.status.check";
 
-pub async fn start_kie_status_queue(pool: PgPool, kie_api_key: String) {
+pub async fn start_kie_status_queue(
+    pool: PgPool,
+    kie_api_key: String,
+    ws_hub: actix::Addr<WsHub>,
+) {
     let rabbit_url = match resolve_rabbit_url() {
         Some(url) => url,
         None => {
@@ -53,10 +58,18 @@ pub async fn start_kie_status_queue(pool: PgPool, kie_api_key: String) {
 
     let loop_pool = pool.clone();
     let loop_key = kie_api_key.clone();
+    let loop_hub = ws_hub.clone();
     rt::spawn(async move {
         loop {
-            match run_queue_once(&loop_pool, &loop_key, &rabbit_url, poll_interval, batch_size)
-                .await
+            match run_queue_once(
+                &loop_pool,
+                &loop_key,
+                &rabbit_url,
+                poll_interval,
+                batch_size,
+                &loop_hub,
+            )
+            .await
             {
                 Ok(_) => log::warn!("rabbitmq loop ended, reconnecting"),
                 Err(e) => log::error!("rabbitmq loop error: {e}"),
@@ -72,6 +85,7 @@ async fn run_queue_once(
     rabbit_url: &str,
     poll_interval: u64,
     batch_size: i64,
+    ws_hub: &actix::Addr<WsHub>,
 ) -> Result<(), String> {
     let conn = Connection::connect(rabbit_url, ConnectionProperties::default())
         .await
@@ -107,7 +121,7 @@ async fn run_queue_once(
     });
 
     let consumer_pool = pool.clone();
-    let consume_res = consume_tasks(&consumer_pool, &channel, kie_api_key).await;
+    let consume_res = consume_tasks(&consumer_pool, &channel, kie_api_key, ws_hub).await;
     producer.abort();
     consume_res
 }
@@ -202,6 +216,7 @@ async fn consume_tasks(
     pool: &PgPool,
     channel: &Channel,
     kie_api_key: &str,
+    ws_hub: &actix::Addr<WsHub>,
 ) -> Result<(), String> {
     let mut consumer = channel
         .basic_consume(
@@ -222,7 +237,7 @@ async fn consume_tasks(
             }
         };
 
-        if let Err(e) = handle_task_message(pool, &delivery.data, kie_api_key).await {
+        if let Err(e) = handle_task_message(pool, &delivery.data, kie_api_key, ws_hub).await {
             log::error!("handle task message error: {e}");
         }
 
@@ -232,7 +247,12 @@ async fn consume_tasks(
     Ok(())
 }
 
-async fn handle_task_message(pool: &PgPool, data: &[u8], kie_api_key: &str) -> Result<(), String> {
+async fn handle_task_message(
+    pool: &PgPool,
+    data: &[u8],
+    kie_api_key: &str,
+    ws_hub: &actix::Addr<WsHub>,
+) -> Result<(), String> {
     let msg: TaskMessage = serde_json::from_slice(data).map_err(|e| e.to_string())?;
     let status = fetch_kie_status(&msg.task_id, kie_api_key).await?;
 
@@ -249,6 +269,7 @@ async fn handle_task_message(pool: &PgPool, data: &[u8], kie_api_key: &str) -> R
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
+                notify_upload_by_task(pool, ws_hub, &msg.task_id).await;
             }
         }
         Some("fail") => {
@@ -261,6 +282,7 @@ async fn handle_task_message(pool: &PgPool, data: &[u8], kie_api_key: &str) -> R
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
+            notify_upload_by_task(pool, ws_hub, &msg.task_id).await;
         }
         _ => {}
     }

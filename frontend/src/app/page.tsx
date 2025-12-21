@@ -23,29 +23,29 @@ const features = [
 
 const pricing = [
   {
-    name: "Starter Pack",
-    price: "$4.99",
+    name: "10 Removals Pack",
+    price: "5.00 USD",
     tag: "One-time",
-    description: "Perfect when you need a quick batch.",
-    credits: "5 removals",
-    highlights: ["Instant delivery", "One-time credits", "Priority queue"],
+    description: "Remove watermark from 10 videos",
+    credits: "10 removals",
+    highlights: ["Instant delivery", "No subscription", "Credits never expire"],
   },
   {
-    name: "Creator Monthly",
-    price: "$9.99",
-    tag: "Subscription",
-    description: "Best for consistent weekly uploads.",
-    credits: "30 removals / month",
-    highlights: ["Monthly quota", "Auto-renewal", "Cancel anytime"],
+    name: "25 Removals Pack",
+    price: "14.99 USD",
+    tag: "Top pick",
+    description: "Best value for multiple videos, remove watermark from 25 videos",
+    credits: "25 removals",
+    highlights: ["Best value", "One-time purchase", "Priority queue"],
     featured: true,
   },
   {
-    name: "Studio",
-    price: "$24.99",
-    tag: "Subscription",
-    description: "For teams with high output.",
-    credits: "100 removals / month",
-    highlights: ["Team-ready", "Priority support", "Usage insights"],
+    name: "50 Removals Pack",
+    price: "29.99 USD",
+    tag: "One-time",
+    description: "For heavy users, remove watermark from 50 videos",
+    credits: "50 removals",
+    highlights: ["High volume", "Fast processing", "Priority support"],
   },
 ];
 
@@ -66,9 +66,7 @@ const steps = [
 
 export default function Home() {
   const disableSubscriptions = process.env.NEXT_PUBLIC_DISABLE_SUBSCRIPTIONS === "true";
-  const visiblePricing = disableSubscriptions
-    ? pricing.filter((plan) => plan.tag === "One-time")
-    : pricing;
+  const visiblePricing = pricing;
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -186,12 +184,14 @@ export default function Home() {
 
         <section id="pricing" className="space-y-8">
           <div className="flex flex-col items-center gap-3 text-center">
-            <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Pricing</p>
-            <h2 className="text-3xl font-[var(--font-display)]">Pick a plan that matches your volume</h2>
+            <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">One-time packs</p>
+            <h2 className="text-3xl font-[var(--font-display)]">
+              Top up when you run out of monthly quota.
+            </h2>
             <p className="max-w-xl text-sm text-muted-foreground">
               {disableSubscriptions
-                ? "Grab a one-time pack. More plans will return soon."
-                : "Mix and match subscriptions with packs. Unused one-time credits never expire."}
+                ? "Grab a one-time pack and keep your workflow moving."
+                : "Add a pack anytime — one-time credits never expire."}
             </p>
           </div>
           <div className="grid gap-6 lg:grid-cols-3">
@@ -204,7 +204,7 @@ export default function Home() {
               >
                 {plan.featured && (
                   <Badge className="absolute right-4 top-4 bg-foreground text-background">
-                    Most popular
+                    Top pick
                   </Badge>
                 )}
                 <CardHeader>
@@ -228,7 +228,7 @@ export default function Home() {
                     ))}
                   </div>
                   <Button asChild className="w-full">
-                    <Link href="/register">Choose plan</Link>
+                    <Link href="/register">Buy</Link>
                   </Button>
                 </CardContent>
               </Card>

@@ -50,6 +50,7 @@ export type CreditsStatus = {
 
 export type UploadItem = {
   id: number;
+  task_id?: string | null;
   status: string;
   original_filename: string;
   cleaned_url?: string | null;

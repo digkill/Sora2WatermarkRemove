@@ -370,18 +370,30 @@ async fn create_and_send_verification(
         .map_err(|e| e.to_string())?;
 
     let smtp_port = smtp_port.unwrap_or(587);
+    let smtp_security = std::env::var("SMTP_SECURITY").unwrap_or_else(|_| {
+        if smtp_port == 465 {
+            "ssl".to_string()
+        } else {
+            "starttls".to_string()
+        }
+    });
+
+    let mut builder = match smtp_security.as_str() {
+        "ssl" => AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_host.clone().unwrap())
+            .map_err(|e| e.to_string())?,
+        "none" => AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(
+            smtp_host.clone().unwrap(),
+        ),
+        _ => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_host.clone().unwrap())
+            .map_err(|e| e.to_string())?,
+    };
+    builder = builder.port(smtp_port);
+
     let mailer = if let (Some(user), Some(pass)) = (smtp_user, smtp_pass) {
         let creds = Credentials::new(user, pass);
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_host.unwrap())
-            .map_err(|e| e.to_string())?
-            .credentials(creds)
-            .port(smtp_port)
-            .build()
+        builder.credentials(creds).build()
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_host.unwrap())
-            .map_err(|e| e.to_string())?
-            .port(smtp_port)
-            .build()
+        builder.build()
     };
 
     mailer.send(email_message).await.map_err(|e| e.to_string())?;

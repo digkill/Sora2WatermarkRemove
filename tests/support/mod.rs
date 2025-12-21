@@ -5,7 +5,8 @@ use std::env;
 use std::sync::OnceLock;
 use tokio::sync::{Mutex, MutexGuard};
 
-use sora_watermark_remov::AppState;
+use sora_watermark_remov::{AppState, ws::WsHub};
+use actix::Actor;
 
 fn split_db_url(url: &str) -> Result<(String, String), String> {
     let (base, query) = match url.split_once('?') {
@@ -102,5 +103,6 @@ pub async fn build_state(pool: PgPool, lava_webhook_key: &str) -> AppState {
         callback_base_url: "http://localhost".to_string(),
         lava_api_key: "test-lava".to_string(),
         lava_webhook_key: lava_webhook_key.to_string(),
+        ws_hub: WsHub::new().start(),
     }
 }

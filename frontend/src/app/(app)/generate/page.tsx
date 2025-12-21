@@ -13,6 +13,8 @@ export default function GeneratePage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"success" | "error" | null>(null);
+  const [lastUploadId, setLastUploadId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploads, setUploads] = useState<Awaited<ReturnType<typeof listUploads>>>([]);
@@ -63,6 +65,57 @@ export default function GeneratePage() {
     }
   }, []);
 
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+
+    const baseRaw =
+      process.env.NEXT_PUBLIC_WS_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    const base = baseRaw.replace(/\/+$/g, "");
+    if (!base) {
+      return;
+    }
+
+    const wsBase = base.replace(/^https?/i, (match) => (match === "https" ? "wss" : "ws"));
+    const socket = new WebSocket(`${wsBase}/ws/uploads?token=${encodeURIComponent(token)}`);
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.event !== "upload.updated" || !payload.data?.id) {
+          return;
+        }
+        const item = payload.data;
+        if (lastUploadId && item.id === lastUploadId) {
+          if (item.status === "ready") {
+            setStatus("Video is ready. You can download it below.");
+            setStatusTone("success");
+          } else if (item.status === "failed") {
+            setStatus("Processing failed. Please try another link.");
+            setStatusTone("error");
+          }
+        }
+        setUploads((prev) => {
+          const idx = prev.findIndex((row) => row.id === item.id);
+          if (idx === -1) {
+            return [item, ...prev];
+          }
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...item };
+          return next;
+        });
+      } catch {
+        return;
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [lastUploadId]);
+
   const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!url.trim()) {
@@ -71,12 +124,15 @@ export default function GeneratePage() {
     }
     setError(null);
     setStatus(null);
+    setStatusTone(null);
     setLoading(true);
     try {
       const result = await uploadVideo({
         url: url.trim(),
       });
       setStatus(`Processing started. Task ID: ${result.task_id}`);
+      setStatusTone(null);
+      setLastUploadId(result.upload_id);
       refreshUploads();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -110,7 +166,19 @@ export default function GeneratePage() {
               {loading ? "Uploading..." : "Start processing"}
             </Button>
           </form>
-          {status && <p className="text-sm text-foreground">{status}</p>}
+          {status && (
+            <div
+              className={`rounded-2xl border px-4 py-3 text-sm ${
+                statusTone === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : statusTone === "error"
+                    ? "border-rose-200 bg-rose-50 text-rose-900"
+                    : "border-border/60 bg-background/60 text-foreground"
+              }`}
+            >
+              {status}
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>

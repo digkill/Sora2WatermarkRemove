@@ -5,6 +5,7 @@ pub mod docs;
 pub mod models;
 pub mod queue;
 pub mod s3_utils;
+pub mod ws;
 
 use aws_sdk_s3::Client as S3Client;
 use sqlx::PgPool;
@@ -19,4 +20,5 @@ pub struct AppState {
     pub callback_base_url: String,
     pub lava_api_key: String,
     pub lava_webhook_key: String,
+    pub ws_hub: actix::Addr<ws::WsHub>,
 }

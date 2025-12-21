@@ -36,6 +36,7 @@ pub struct CreditsStatusResponse {
 #[derive(Serialize, ToSchema)]
 pub struct UploadItemResponse {
     pub id: i32,
+    pub task_id: Option<String>,
     pub status: String,
     pub original_filename: String,
     pub cleaned_url: Option<String>,
@@ -237,7 +238,7 @@ pub async fn list_uploads(
         .max(0);
 
     let rows = match sqlx::query(
-        r#"SELECT id, status, original_filename, cleaned_url, created_at
+        r#"SELECT id, task_id, status, original_filename, cleaned_url, created_at
            FROM uploads
            WHERE user_id = $1
            ORDER BY created_at DESC
@@ -260,6 +261,7 @@ pub async fn list_uploads(
         .into_iter()
         .map(|row| UploadItemResponse {
             id: row.get("id"),
+            task_id: row.get("task_id"),
             status: row.get("status"),
             original_filename: row.get("original_filename"),
             cleaned_url: row.get("cleaned_url"),

@@ -1,6 +1,7 @@
 // src/main.rs
 use actix_cors::Cors;
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use actix::Actor;
 use actix_web::middleware::Logger;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client as S3Client;
@@ -57,6 +58,7 @@ async fn main() -> std::io::Result<()> {
 
     let s3_client = S3Client::from_conf(s3_config_builder.build());
 
+    let ws_hub = sora_watermark_remov::ws::WsHub::new().start();
     let state = web::Data::new(AppState {
         pool,
         s3_client,
@@ -66,10 +68,16 @@ async fn main() -> std::io::Result<()> {
         callback_base_url,
         lava_api_key,
         lava_webhook_key,
+        ws_hub,
     });
 
     // RabbitMQ status checker for KIE tasks
-    sora_watermark_remov::queue::start_kie_status_queue(state.pool.clone(), state.kie_api_key.clone()).await;
+    sora_watermark_remov::queue::start_kie_status_queue(
+        state.pool.clone(),
+        state.kie_api_key.clone(),
+        state.ws_hub.clone(),
+    )
+    .await;
 
     HttpServer::new(move || {
         let cors = {
@@ -102,6 +110,7 @@ async fn main() -> std::io::Result<()> {
             // Вебхуки (публичные)
             .service(api::webhooks::watermark_callback)
             .service(api::webhooks::watermark_callback_alias)
+            .route("/ws/uploads", web::get().to(sora_watermark_remov::ws::uploads_ws))
             // Защищённые роуты
             .service(
                 web::scope("/api")

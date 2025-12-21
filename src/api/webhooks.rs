@@ -1,6 +1,6 @@
 // src/api/webhooks.rs
 
-use crate::{AppState, s3_utils::build_public_url};
+use crate::{AppState, s3_utils::build_public_url, ws::notify_upload_by_task};
 use actix_web::{HttpResponse, post, web};
 use aws_sdk_s3::primitives::ByteStream;
 use reqwest::Client as HttpClient;
@@ -136,6 +136,8 @@ async fn handle_watermark_callback(
     .bind(&task_id)
     .execute(&state.pool)
     .await;
+
+    notify_upload_by_task(&state.pool, &state.ws_hub, &task_id).await;
 
     log::info!("kie callback processed task_id={}", task_id);
     HttpResponse::Ok().body("OK")
