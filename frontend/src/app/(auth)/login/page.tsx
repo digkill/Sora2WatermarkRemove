@@ -77,7 +77,7 @@ export default function LoginPage() {
           {needsVerification && (
             <p className="text-sm text-muted-foreground">
               Need a new verification email?{" "}
-              <Link className="text-foreground underline-offset-4 hover:underline" href={`/verify?email=${encodeURIComponent(email)}`}>
+              <Link className="text-foreground underline-offset-4 hover:underline" href={`/verify-email?email=${encodeURIComponent(email)}`}>
                 Verify your email
               </Link>
             </p>

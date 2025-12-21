@@ -117,7 +117,7 @@ export async function login(payload: { email: string; password: string }): Promi
 }
 
 export async function verifyEmail(token: string) {
-  return apiFetch("/auth/verify?token=" + encodeURIComponent(token));
+  return apiFetch("/auth/verify-email?token=" + encodeURIComponent(token));
 }
 
 export async function resendVerification(email: string) {

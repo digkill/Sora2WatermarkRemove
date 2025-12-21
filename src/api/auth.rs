@@ -232,7 +232,7 @@ pub async fn resend_verification(
 
 #[utoipa::path(
     get,
-    path = "/auth/verify",
+    path = "/auth/verify-email",
     tag = "auth",
     params(
         ("token" = String, Query, description = "Verification token")
@@ -243,7 +243,7 @@ pub async fn resend_verification(
         (status = 500, description = "Server error")
     )
 )]
-#[get("/auth/verify")]
+#[get("/auth/verify-email")]
 pub async fn verify_email(
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -340,7 +340,7 @@ async fn create_and_send_verification(
     .map_err(|e| e.to_string())?;
 
     let app_base = std::env::var("APP_BASE_URL").map_err(|_| "APP_BASE_URL must be set".to_string())?;
-    let verify_url = format!("{app_base}/verify?token={token}");
+    let verify_url = format!("{app_base}/verify-email?token={token}");
 
     let smtp_host = std::env::var("SMTP_HOST").ok();
     let smtp_user = std::env::var("SMTP_USER").ok();

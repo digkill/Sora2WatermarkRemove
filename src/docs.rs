@@ -6,6 +6,7 @@ use utoipa::OpenApi;
         crate::api::auth::register,
         crate::api::auth::login,
         crate::api::handlers::upload,
+        crate::api::auth::verify_email,
         crate::api::webhooks::watermark_callback,
         crate::api::webhooks::watermark_callback_alias
     ),

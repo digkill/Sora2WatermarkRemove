@@ -28,7 +28,7 @@ export default function RegisterPage() {
         router.push("/dashboard");
         return;
       }
-      router.push(`/verify?email=${encodeURIComponent(email)}`);
+      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
