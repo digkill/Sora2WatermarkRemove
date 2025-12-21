@@ -7,6 +7,8 @@ use lapin::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::time::Duration;
+use actix_web::rt;
+use dotenvy;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TaskMessage {
@@ -31,37 +33,14 @@ struct KieRecordData {
 const QUEUE_NAME: &str = "kie.status.check";
 
 pub async fn start_kie_status_queue(pool: PgPool, kie_api_key: String) {
-    let rabbit_url = match std::env::var("RABBITMQ_URL") {
-        Ok(url) => url,
-        Err(_) => {
+    let rabbit_url = match resolve_rabbit_url() {
+        Some(url) => url,
+        None => {
             log::warn!("RABBITMQ_URL not set, skipping status queue");
             return;
         }
     };
-
-    let conn = match Connection::connect(&rabbit_url, ConnectionProperties::default()).await {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("rabbitmq connect error: {e}");
-            return;
-        }
-    };
-
-    let channel = match conn.create_channel().await {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("rabbitmq channel error: {e}");
-            return;
-        }
-    };
-
-    if let Err(e) = channel
-        .queue_declare(QUEUE_NAME, QueueDeclareOptions::default(), FieldTable::default())
-        .await
-    {
-        log::error!("rabbitmq declare queue error: {e}");
-        return;
-    }
+    log::info!("rabbitmq connecting to {}", redact_amqp_url(&rabbit_url));
 
     let poll_interval = std::env::var("KIE_STATUS_POLL_INTERVAL_SECS")
         .ok()
@@ -72,24 +51,113 @@ pub async fn start_kie_status_queue(pool: PgPool, kie_api_key: String) {
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(50);
 
+    let loop_pool = pool.clone();
+    let loop_key = kie_api_key.clone();
+    rt::spawn(async move {
+        loop {
+            match run_queue_once(&loop_pool, &loop_key, &rabbit_url, poll_interval, batch_size)
+                .await
+            {
+                Ok(_) => log::warn!("rabbitmq loop ended, reconnecting"),
+                Err(e) => log::error!("rabbitmq loop error: {e}"),
+            }
+            rt::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+}
+
+async fn run_queue_once(
+    pool: &PgPool,
+    kie_api_key: &str,
+    rabbit_url: &str,
+    poll_interval: u64,
+    batch_size: i64,
+) -> Result<(), String> {
+    let conn = Connection::connect(rabbit_url, ConnectionProperties::default())
+        .await
+        .map_err(|e| {
+            format!(
+                "rabbitmq connect error: {e} url={}",
+                redact_amqp_url(rabbit_url)
+            )
+        })?;
+
+    let channel = conn
+        .create_channel()
+        .await
+        .map_err(|e| format!("rabbitmq channel error: {e}"))?;
+
+    channel
+        .queue_declare(QUEUE_NAME, QueueDeclareOptions::default(), FieldTable::default())
+        .await
+        .map_err(|e| format!("rabbitmq declare queue error: {e}"))?;
+    log::info!("rabbitmq connected, queue ready: {}", QUEUE_NAME);
+
     let producer_pool = pool.clone();
     let producer_channel = channel.clone();
-    tokio::spawn(async move {
+    let producer = rt::spawn(async move {
         loop {
             if let Err(e) = enqueue_pending_tasks(&producer_pool, &producer_channel, batch_size).await
             {
                 log::error!("queue enqueue error: {e}");
+                break;
             }
-            tokio::time::sleep(Duration::from_secs(poll_interval)).await;
+            rt::time::sleep(Duration::from_secs(poll_interval)).await;
         }
     });
 
     let consumer_pool = pool.clone();
-    tokio::spawn(async move {
-        if let Err(e) = consume_tasks(&consumer_pool, &channel, &kie_api_key).await {
-            log::error!("queue consume error: {e}");
+    let consume_res = consume_tasks(&consumer_pool, &channel, kie_api_key).await;
+    producer.abort();
+    consume_res
+}
+
+fn resolve_rabbit_url() -> Option<String> {
+    let env_url = std::env::var("RABBITMQ_URL").ok();
+    let file_url = read_dotenv_value("RABBITMQ_URL");
+
+    match (env_url, file_url) {
+        (Some(env), Some(file)) if looks_local_rabbit(&env) && env != file => {
+            log::warn!(
+                "RABBITMQ_URL from environment is local, overriding with .env value"
+            );
+            Some(file)
         }
-    });
+        (Some(env), _) => Some(env),
+        (None, Some(file)) => Some(file),
+        _ => None,
+    }
+}
+
+fn read_dotenv_value(key: &str) -> Option<String> {
+    let iter = dotenvy::from_filename_iter(".env").ok()?;
+    for item in iter {
+        if let Ok((k, v)) = item {
+            if k == key {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+fn looks_local_rabbit(url: &str) -> bool {
+    url.contains("@localhost")
+        || url.contains("://localhost")
+        || url.contains("127.0.0.1")
+}
+
+fn redact_amqp_url(url: &str) -> String {
+    let at_pos = match url.rfind('@') {
+        Some(pos) => pos,
+        None => return url.to_string(),
+    };
+    let (creds, rest) = url.split_at(at_pos);
+    let colon_pos = match creds.rfind(':') {
+        Some(pos) => pos,
+        None => return format!("{creds}{rest}"),
+    };
+    format!("{}:***{}", &creds[..colon_pos], rest)
 }
 
 async fn enqueue_pending_tasks(

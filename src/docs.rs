@@ -14,7 +14,7 @@ use utoipa::OpenApi;
             crate::api::auth::RegisterRequest,
             crate::api::auth::LoginRequest,
             crate::api::auth::AuthResponse,
-            crate::api::handlers::FileUploadBody,
+            crate::api::handlers::UrlUploadBody,
             crate::api::handlers::UploadResponse,
             crate::api::webhooks::CallbackPayload,
             crate::api::webhooks::CallbackData,

@@ -1,0 +1,19 @@
+[Unit]
+Description=Sora Watermark Remover API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/sora-watermark-remove
+EnvironmentFile=/opt/sora-watermark-remove/.env
+Environment=RUST_LOG=info
+ExecStart=/opt/sora-watermark-remove/target/release/sora_watermark_remov
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

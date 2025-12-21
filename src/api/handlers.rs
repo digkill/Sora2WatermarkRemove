@@ -2,25 +2,21 @@
 
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, get, post, web};
-use aws_sdk_s3::primitives::ByteStream;
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::AppState; // AppState в main.rs
 use crate::billing::{can_remove_watermark, consume_credit};
-use crate::s3_utils::build_public_url;
 use actix_web::web::ReqData;
 use sqlx::Row;
 
 #[derive(ToSchema)]
-pub struct FileUploadBody {
-    /// MP4 video file
-    #[schema(value_type = String, format = Binary)]
-    pub file: String,
+pub struct UrlUploadBody {
+    /// Public video URL (Sora share link or direct MP4 URL)
+    pub url: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -51,7 +47,7 @@ pub struct UploadItemResponse {
     path = "/api/upload",
     tag = "uploads",
     request_body(
-        content = FileUploadBody,
+        content = UrlUploadBody,
         content_type = "multipart/form-data"
     ),
     responses(
@@ -85,10 +81,10 @@ pub async fn upload(
         }
     };
 
-    // Чтение файла
-    let mut file_bytes: Vec<u8> = Vec::new();
+    // Чтение формы (только URL)
     let mut original_filename = "video.mp4".to_string();
     let mut url_value: Option<String> = None;
+    let mut file_provided = false;
 
     while let Some(item) = payload.next().await {
         let mut field = match item {
@@ -113,60 +109,33 @@ pub async fn upload(
             continue;
         }
 
-        // Получаем имя файла (actix-multipart 0.6: content_disposition() -> &ContentDisposition)
-        let cd = field.content_disposition();
-        if let Some(name) = cd.get_filename() {
-            original_filename = sanitize(name);
-        }
-
-        // Читаем чанки
+        // Файловые загрузки временно отключены
+        file_provided = true;
         while let Some(chunk) = field.next().await {
-            if let Ok(data) = chunk {
-                file_bytes.extend_from_slice(&data);
-            }
+            let _ = chunk;
         }
     }
 
-    let mut external_url: Option<String> = None;
-    if file_bytes.is_empty() {
-        if let Some(url) = url_value.as_deref() {
-            log::info!("upload using external url user_id={} url={}", user_id, url);
-            external_url = Some(url.to_string());
-            if let Some(name) = url.rsplit('/').next() {
-                let name = name.split('?').next().unwrap_or(name);
-                let name = name.split('#').next().unwrap_or(name);
-                if !name.is_empty() {
-                    original_filename = sanitize(name);
-                }
-            }
-        } else {
-            return HttpResponse::BadRequest().body("No file or URL provided");
-        }
+    if file_provided {
+        return HttpResponse::BadRequest().body("File uploads are disabled. Please provide a video URL.");
     }
 
-    // Загрузка в S3 (если файл), или используем внешнюю ссылку
-    let original_key = if let Some(url) = external_url.as_deref() {
-        url.to_string()
+    let external_url: Option<String> = if let Some(url) = url_value.as_deref() {
+        log::info!("upload using external url user_id={} url={}", user_id, url);
+        if let Some(name) = url.rsplit('/').next() {
+            let name = name.split('?').next().unwrap_or(name);
+            let name = name.split('#').next().unwrap_or(name);
+            if !name.is_empty() {
+                original_filename = sanitize(name);
+            }
+        }
+        Some(url.to_string())
     } else {
-        format!("original/{}/{}.mp4", user_id, Uuid::new_v4())
+        return HttpResponse::BadRequest().body("Video URL is required");
     };
 
-    if external_url.is_none() && std::env::var("MOCK_S3").unwrap_or_default() != "true" {
-        let stream = ByteStream::from(file_bytes);
-        if let Err(e) = state
-            .s3_client
-            .put_object()
-            .bucket(&state.s3_bucket)
-            .key(&original_key)
-            .content_type("video/mp4")
-            .body(stream)
-            .send()
-            .await
-        {
-            log::error!("upload s3 error user_id={} error={}", user_id, e);
-            return HttpResponse::InternalServerError().body("Failed to save to S3");
-        }
-    }
+    // Сохраняем URL как источник
+    let original_key = external_url.clone().unwrap_or_default();
 
     // Вставка в БД (runtime query, чтобы сборка не зависела от наличия таблиц в DEV БД)
     let upload_id: i32 = match sqlx::query(
@@ -190,11 +159,7 @@ pub async fn upload(
     let _ = consume_credit(&state.pool, user_id, &credit_type).await;
 
     // Запуск Kie.ai
-    let public_url = if let Some(url) = external_url.as_deref() {
-        url.to_string()
-    } else {
-        build_public_url(&state.s3_public_base_url, &state.s3_bucket, &original_key)
-    };
+    let public_url = external_url.unwrap_or_default();
     let callback_url = format!("{}/api/watermark-callback", state.callback_base_url);
 
     match start_remove_watermark(&state.kie_api_key, &public_url, &callback_url).await {

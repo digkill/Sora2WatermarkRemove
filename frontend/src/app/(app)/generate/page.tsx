@@ -11,9 +11,7 @@ import { getToken } from "@/lib/auth";
 
 export default function GeneratePage() {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
-  const [mode, setMode] = useState<"file" | "url">("file");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,11 +65,7 @@ export default function GeneratePage() {
 
   const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (mode === "file" && !file) {
-      setError("Choose a video file first.");
-      return;
-    }
-    if (mode === "url" && !url.trim()) {
+    if (!url.trim()) {
       setError("Paste a video URL first.");
       return;
     }
@@ -80,8 +74,7 @@ export default function GeneratePage() {
     setLoading(true);
     try {
       const result = await uploadVideo({
-        file: mode === "file" ? file : null,
-        url: mode === "url" ? url.trim() : undefined,
+        url: url.trim(),
       });
       setStatus(`Processing started. Task ID: ${result.task_id}`);
       refreshUploads();
@@ -97,55 +90,21 @@ export default function GeneratePage() {
       <Card className="border-border/60 bg-white/80">
         <CardHeader>
           <CardTitle className="text-2xl font-[var(--font-display)]">Generate a clean file</CardTitle>
-          <CardDescription>Upload your Sora video and we handle the rest.</CardDescription>
+          <CardDescription>Paste a Sora share link and we handle the rest.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-4" onSubmit={handleUpload}>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant={mode === "file" ? "default" : "outline"}
-                onClick={() => setMode("file")}
-              >
-                Upload file
-              </Button>
-              <Button
-                type="button"
-                variant={mode === "url" ? "default" : "outline"}
-                onClick={() => setMode("url")}
-              >
-                Paste URL
-              </Button>
-            </div>
             <div className="space-y-2">
-              {mode === "file" ? (
-                <>
-                  <label className="text-sm text-muted-foreground" htmlFor="file">
-                    Video file (MP4)
-                  </label>
-                  <Input
-                    key="file-input"
-                    id="file"
-                    type="file"
-                    accept="video/mp4"
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="text-sm text-muted-foreground" htmlFor="url">
-                    Video URL (MP4)
-                  </label>
-                  <Input
-                    key="url-input"
-                    id="url"
-                    type="url"
-                    value={url}
-                    onChange={(event) => setUrl(event.target.value)}
-                    placeholder="https://example.com/video.mp4"
-                  />
-                </>
-              )}
+              <label className="text-sm text-muted-foreground" htmlFor="url">
+                Sora share URL
+              </label>
+              <Input
+                id="url"
+                type="url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://sora.chatgpt.com/p/..."
+              />
             </div>
             <Button type="submit" disabled={loading}>
               {loading ? "Uploading..." : "Start processing"}

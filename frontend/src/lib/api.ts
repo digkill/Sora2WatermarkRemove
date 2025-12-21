@@ -154,14 +154,9 @@ export async function cancelSubscription(subscription_id: number) {
   });
 }
 
-export async function uploadVideo(payload: { file?: File | null; url?: string }): Promise<UploadResponse> {
+export async function uploadVideo(payload: { url: string }): Promise<UploadResponse> {
   const form = new FormData();
-  if (payload.file) {
-    form.append("file", payload.file);
-  }
-  if (payload.url) {
-    form.append("url", payload.url);
-  }
+  form.append("url", payload.url);
   return apiFetch<UploadResponse>("/api/upload", {
     method: "POST",
     auth: true,
