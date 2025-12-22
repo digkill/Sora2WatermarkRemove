@@ -99,11 +99,18 @@ pub async fn create_payment(
         .unwrap_or_else(|| default_periodicity.to_string());
 
     // 5) create invoice in Lava
-    log::info!("lava create invoice user_id={} email={}", user_id, buyer_email);
+    log::info!(
+        "lava create invoice user_id={} email={} offer_id={} periodicity={}",
+        user_id,
+        buyer_email,
+        offer_id,
+        periodicity
+    );
     let invoice = match lava_client::create_invoice_v3(
         &state.lava_api_key,
         lava_client::CreateInvoiceV3Request {
             email: buyer_email.clone(),
+            buyer_email: Some(buyer_email.clone()),
             offer_id: offer_id.to_string(),
             currency: product.currency.clone(),
             payment_provider: payload.payment_provider.clone(),
@@ -120,7 +127,10 @@ pub async fn create_payment(
                 user_id,
                 buyer_email
             );
-            return HttpResponse::BadRequest().json(json!({"error": "lava invoice create failed"}));
+            return HttpResponse::BadRequest().json(json!({
+                "error": "lava invoice create failed",
+                "details": e.to_string()
+            }));
         }
     };
 

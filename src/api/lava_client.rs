@@ -36,6 +36,8 @@ impl From<reqwest::Error> for LavaError {
 #[derive(Debug, Serialize)]
 pub struct CreateInvoiceV3Request {
     pub email: String,
+    #[serde(rename = "buyerEmail", skip_serializing_if = "Option::is_none")]
+    pub buyer_email: Option<String>,
     #[serde(rename = "offerId")]
     pub offer_id: String,
     pub currency: String,
