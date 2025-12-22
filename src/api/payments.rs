@@ -12,7 +12,7 @@ pub struct CreatePaymentRequest {
     pub product_slug: String,
 
     /// Email покупателя в Lava (обязательное поле Lava API)
-    /// Если не передано — возьмём из users.email.
+    /// Источник: users.email (из БД).
     pub buyer_email: Option<String>,
 
     /// Можно явно задать периодичность. Для подписок по умолчанию MONTHLY.
@@ -56,21 +56,18 @@ pub async fn create_payment(
         }));
     }
 
-    // 2) buyer_email: либо из запроса, либо из users
-    let buyer_email = match payload.buyer_email.clone() {
-        Some(e) => e,
-        None => match sqlx::query("SELECT email FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(&state.pool)
-            .await
-        {
-            Ok(Some(r)) => r.get::<String, _>("email"),
-            Ok(None) => return HttpResponse::BadRequest().json(json!({"error": "user not found"})),
-            Err(e) => {
-                eprintln!("select user email error: {e}");
-                return HttpResponse::InternalServerError().finish();
-            }
-        },
+    // 2) buyer_email: всегда берём из users.email
+    let buyer_email = match sqlx::query("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        Ok(Some(r)) => r.get::<String, _>("email"),
+        Ok(None) => return HttpResponse::BadRequest().json(json!({"error": "user not found"})),
+        Err(e) => {
+            eprintln!("select user email error: {e}");
+            return HttpResponse::InternalServerError().finish();
+        }
     };
 
     // 3) map internal product_slug -> lava offerId (from DB)
