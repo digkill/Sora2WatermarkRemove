@@ -72,7 +72,7 @@ pub async fn create_payment(
 
     let buyer_email = buyer_email.trim().to_string();
     if !buyer_email.contains('@') || !buyer_email.contains('.') {
-        eprintln!("invalid buyer email for lava user_id={} email={}", user_id, buyer_email);
+        log::error!("invalid buyer email for lava user_id={} email={}", user_id, buyer_email);
         return HttpResponse::BadRequest().json(json!({"error": "invalid buyer email"}));
     }
 
@@ -99,6 +99,7 @@ pub async fn create_payment(
         .unwrap_or_else(|| default_periodicity.to_string());
 
     // 5) create invoice in Lava
+    log::info!("lava create invoice user_id={} email={}", user_id, buyer_email);
     let invoice = match lava_client::create_invoice_v3(
         &state.lava_api_key,
         lava_client::CreateInvoiceV3Request {
@@ -114,9 +115,10 @@ pub async fn create_payment(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!(
+            log::error!(
                 "lava create_invoice_v3 error: {e} user_id={} email={}",
-                user_id, buyer_email
+                user_id,
+                buyer_email
             );
             return HttpResponse::BadRequest().json(json!({"error": "lava invoice create failed"}));
         }
