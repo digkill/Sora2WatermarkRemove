@@ -70,6 +70,12 @@ pub async fn create_payment(
         }
     };
 
+    let buyer_email = buyer_email.trim().to_string();
+    if !buyer_email.contains('@') || !buyer_email.contains('.') {
+        eprintln!("invalid buyer email for lava user_id={} email={}", user_id, buyer_email);
+        return HttpResponse::BadRequest().json(json!({"error": "invalid buyer email"}));
+    }
+
     // 3) map internal product_slug -> lava offerId (from DB)
     let offer_id = match product.lava_offer_id.as_deref() {
         Some(id) => id,
@@ -108,7 +114,10 @@ pub async fn create_payment(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("lava create_invoice_v3 error: {e}");
+            eprintln!(
+                "lava create_invoice_v3 error: {e} user_id={} email={}",
+                user_id, buyer_email
+            );
             return HttpResponse::BadRequest().json(json!({"error": "lava invoice create failed"}));
         }
     };
