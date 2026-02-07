@@ -132,3 +132,7 @@ body {
     radial-gradient(circle at 80% 80%, oklch(0.88 0.12 20 / 0.35), transparent 50%);
   background-attachment: fixed;
 }
+
+a {
+  cursor: pointer;
+}
