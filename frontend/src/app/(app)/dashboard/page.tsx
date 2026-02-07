@@ -223,7 +223,7 @@ export default function DashboardPage() {
                         <p className="text-base font-semibold">
                           {product.price} {product.currency}
                         </p>
-                        <Button size="sm" onClick={() => handleBuy(product.slug)}>
+                        <Button size="sm" variant="defaultLink" onClick={() => handleBuy(product.slug)}>
                           Buy
                         </Button>
                       </div>
