@@ -227,7 +227,7 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                  <Button asChild className="w-full">
+                  <Button asChild className="w-full mr-link">
                     <Link href="/register">Buy</Link>
                   </Button>
                 </CardContent>

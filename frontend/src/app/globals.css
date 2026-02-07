@@ -133,6 +133,6 @@ body {
   background-attachment: fixed;
 }
 
-a {
+.mr-link {
   cursor: pointer;
 }
